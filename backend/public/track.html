@@ -1,0 +1,82 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Track your delivery</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { color-scheme: light dark }
+    body{font-family:system-ui,Segoe UI,Arial,sans-serif;margin:20px;line-height:1.45}
+    .badge{display:inline-block;padding:4px 10px;border-radius:12px;color:#fff;font-weight:600}
+    .row{margin:8px 0}
+    .card{background:#fff;border:1px solid #eee;border-radius:10px;padding:16px;box-shadow:0 1px 8px rgba(0,0,0,.05)}
+    .timeline{margin-top:10px;border-left:3px solid #eee;padding-left:10px}
+    .tl{margin:8px 0}
+    .muted{color:#666}
+    .proofs{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+    .proofs img{width:96px;height:96px;object-fit:cover;border-radius:6px;border:1px solid #eee}
+  </style>
+</head>
+<body>
+  <h2>Delivery tracking</h2>
+  <div id="root" class="card">Loading…</div>
+
+  <script>
+    const badgeColor = (s) => {
+      if (s === "DELIVERED") return "#198754";
+      if (s === "PICKED_UP") return "#fd7e14";
+      if (s === "ACCEPTED") return "#0d6efd";
+      if (s === "CANCELED") return "#6c757d";
+      return "#ffc107"; // CREATED
+    };
+
+    async function main() {
+      // Use path /api/assigned-orders/track/:tid or /public/track/:tid
+      const parts = location.pathname.split("/");
+      const tid = parts[parts.length - 1] || new URLSearchParams(location.search).get("tid");
+      const api = `/api/assigned-orders/public/track/${encodeURIComponent(tid)}`;
+      const el = document.getElementById("root");
+
+      try {
+        const res = await fetch(api);
+        const json = await res.json();
+        if (!json.ok) throw new Error(json.error || "Not found");
+        const d = json.data;
+
+        const slot = (d.promiseSlot && d.promiseSlot.start && d.promiseSlot.end)
+          ? `${new Date(d.promiseSlot.start).toLocaleString()} – ${new Date(d.promiseSlot.end).toLocaleString()}`
+          : "—";
+
+        const tl = (d.timeline || [])
+          .map(t => `<div class="tl">• <strong>${t.status}</strong> — <span class="muted">${new Date(t.at).toLocaleString()}</span>${t.note ? " ("+t.note+")": ""}</div>`)
+          .join("");
+
+        const proofs = (d.proofs && d.proofs.length)
+          ? `<div class="proofs">${d.proofs.map(p => `<img src="${p.url}" alt="proof ${p.type}">`).join("")}</div>`
+          : `<div class="muted">No delivery proof yet.</div>`;
+
+        el.innerHTML = `
+          <div class="row"><strong>Tracking ID:</strong> ${d.trackingId}</div>
+          <div class="row"><strong>Order:</strong> ${d.orderIdMasked}</div>
+          <div class="row"><strong>Status:</strong> <span class="badge" style="background:${badgeColor(d.status)}">${d.status}</span></div>
+          <div class="row"><strong>City / PIN:</strong> ${d.destination?.city || ""} ${d.destination?.pincode || ""}</div>
+          <div class="row"><strong>Promised slot:</strong> ${slot}</div>
+          <div class="timeline">
+            <strong>Timeline</strong>
+            ${tl || '<div class="tl muted">No events yet.</div>'}
+          </div>
+          <div style="margin-top:12px">
+            <strong>Delivery proofs</strong>
+            ${proofs}
+          </div>
+          <div class="row muted" style="margin-top:12px">Last updated: ${new Date(d.updatedAt).toLocaleString()}</div>
+        `;
+      } catch (e) {
+        el.textContent = e.message || "Error";
+      }
+    }
+
+    main();
+  </script>
+</body>
+</html>

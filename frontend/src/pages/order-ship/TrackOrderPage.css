@@ -1,0 +1,19 @@
+.track-order-container {
+  padding: 30px;
+  background: #f8f9fa;
+  border-radius: 10px;
+  max-width: 800px;
+  margin: auto;
+}
+
+.order-info p,
+.agent-info p {
+  margin: 5px 0;
+}
+
+.map-frame {
+  margin-top: 20px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  overflow: hidden;
+}
