@@ -7,9 +7,56 @@ function genTrackId() {
   return crypto.randomBytes(12).toString("base64url");
 }
 
+// LIST: /api/assigned-orders/v1/returns?status=&pincode=&date=&page=&limit=&q=
+exports.listReturnPickups = async (req, res) => {
+  try {
+    const { status, pincode, date, page = 1, limit = 20, q } = req.query;
+    const filter = {};
+    if (status) filter.status = status;
+    if (pincode) filter["pickupAddress.pincode"] = pincode;
+    if (date) filter["pickupSlot.date"] = date;
+    if (q) {
+      filter.$or = [{ rmaId: q }, { originalOrderId: q }, { trackingId: q }];
+    }
+
+    const skip = (Number(page) - 1) * Number(limit);
+    const [items, total] = await Promise.all([
+      ReturnPickup.find(filter)
+        .sort({ updatedAt: -1 })
+        .skip(skip)
+        .limit(Number(limit))
+        .lean(),
+      ReturnPickup.countDocuments(filter),
+    ]);
+
+    res.json({
+      ok: true,
+      page: Number(page),
+      limit: Number(limit),
+      total,
+      items,
+    });
+  } catch (e) {
+    console.error("[returns.list]", e);
+    res.status(500).json({ ok: false, error: "SERVER_ERROR" });
+  }
+};
+
+// GET: /api/assigned-orders/v1/returns/:rmaId
+exports.getReturnByRma = async (req, res) => {
+  try {
+    const { rmaId } = req.params;
+    const doc = await ReturnPickup.findOne({ rmaId }).lean();
+    if (!doc) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+    res.json({ ok: true, data: doc });
+  } catch (e) {
+    console.error("[returns.getByRma]", e);
+    res.status(500).json({ ok: false, error: "SERVER_ERROR" });
+  }
+};
+
 exports.createReturnPickup = async (req, res) => {
   try {
-    // Auth: same DELIVERY_INGEST_TOKEN used for forward orders
     const {
       rmaId,
       originalOrderId,
@@ -24,7 +71,7 @@ exports.createReturnPickup = async (req, res) => {
     if (!pickupAddress?.pincode) {
       return res.status(400).json({ ok: false, error: "NO_PINCODE" });
     }
-    // serviceability check for pickup pincode + slot
+
     const zone = await ServiceabilityZone.findOne({
       pincode: pickupAddress.pincode,
       active: true,
@@ -60,7 +107,7 @@ exports.createReturnPickup = async (req, res) => {
 
     return res.json({
       ok: true,
-      data: { _id: doc._id, trackingId, status: doc.status },
+      data: { _id: doc._id, trackingId, status: doc.status, rmaId: doc.rmaId },
     });
   } catch (e) {
     console.error("[returns.create]", e);
@@ -69,48 +116,32 @@ exports.createReturnPickup = async (req, res) => {
 };
 
 exports.updateReturnStatus = async (req, res) => {
-  try {
-    const { rmaId } = req.params;
-    const { status, note } = req.body; // "ASSIGNED","OUT_FOR_PICKUP","PICKED","FAILED","CANCELLED"
-    const upd = await ReturnPickup.findOneAndUpdate(
-      { rmaId },
-      { $set: { status }, $push: { timeline: { code: status, note } } },
-      { new: true }
-    );
-    if (!upd) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
-
-    // webhook to BBSCART
     try {
-      const axios = require("axios");
-      await axios.post(
-        process.env.BBSCART_RETURNS_WEBHOOK,
-        {
-          rmaId,
-          originalOrderId: upd.originalOrderId,
-          status,
-          trackingId: upd.trackingId,
-        },
-        {
+      if (process.env.BBSCART_RETURNS_WEBHOOK && process.env.DELIVERY_WEBHOOK_TOKEN) {
+        await fetch(process.env.BBSCART_RETURNS_WEBHOOK, {
+          method: "POST",
           headers: {
-            Authorization: `Bearer ${process.env.DELIVERY_WEBHOOK_TOKEN}`,
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${process.env.DELIVERY_WEBHOOK_TOKEN}`,
           },
-        }
-      );
+          body: JSON.stringify({
+            rmaId,
+            originalOrderId: upd.originalOrderId,
+            status: upd.status,
+            trackingId: upd.trackingId,
+            timelineAdded: { code: status, note: note || "", payload },
+          }),
+        });
+      }
     } catch (e) {
       console.warn("[returns.webhook] ", e.message);
     }
-
-    res.json({ ok: true, data: { status: upd.status } });
-  } catch (e) {
-    console.error("[returns.updateStatus]", e);
-    res.status(500).json({ ok: false, error: "SERVER_ERROR" });
-  }
 };
 
 exports.addReturnProofs = async (req, res) => {
   try {
     const { rmaId } = req.params;
-    const { proofs } = req.body; // array of {type,url}
+    const { proofs } = req.body;
     const upd = await ReturnPickup.findOneAndUpdate(
       { rmaId },
       {
@@ -119,6 +150,7 @@ exports.addReturnProofs = async (req, res) => {
           timeline: {
             code: "PROOF_ADDED",
             note: `${proofs?.length || 0} proofs`,
+            at: new Date(),
           },
         },
       },
