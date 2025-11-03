@@ -8,14 +8,17 @@ const TrackOrderPage = () => {
   const [order, setOrder] = useState(null);
   const [error, setError] = useState("");
   const [isMapReady, setIsMapReady] = useState(false);
+  const API_BASE =
+    import.meta.env.MODE === "production"
+      ? import.meta.env.VITE_API_BASE_PROD
+      : import.meta.env.VITE_API_BASE;
+
 const navigate = useNavigate();
 
   useEffect(() => {
     const fetchOrder = async () => {
       try {
-        const res = await axios.get(
-          `http://localhost:5000/api/orders/track/${orderId}`
-        );
+        const res = await axios.get(`${API_BASE}/api/orders/track/${orderId}`);
         console.log("Order fetch success:", res.data);
         setOrder(res.data);
         if (

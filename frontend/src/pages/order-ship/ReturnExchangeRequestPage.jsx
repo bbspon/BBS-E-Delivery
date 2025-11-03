@@ -23,7 +23,13 @@ import { TbTruckReturn } from "react-icons/tb";
 import Header from "../../components/Header";
 import Footer from "../../components/Footer";
 
-const API_BASE = "http://localhost:5000";
+const API_BASE =
+  import.meta.env.MODE === "production"
+    ? import.meta.env.VITE_API_BASE_PROD
+    : import.meta.env.VITE_API_BASE;
+
+
+
 
 export default function ReturnExchangeRequestPage() {
   const [returns, setReturns] = useState([]);
