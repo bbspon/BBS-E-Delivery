@@ -15,13 +15,17 @@ const AssignedOrdersPage = () => {
   const [proofNotes, setProofNotes] = useState("");
   const [activeOrderId, setActiveOrderId] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const isProd = import.meta.env.VITE_ENV === "production";
 
-  // Delivery backend base (list + status updates)
-  // const API_BASE = "http://localhost:5000/api/assigned-orders";
+  // Automatically pick local or production base
   const API_BASE =
-    "http://localhost:5000/api/assigned-orders/v1/delivery/orders";
-  // Don’t hardcode in prod. For local dev, put this in Vite .env:
-  // VITE_DELIVERY_INGEST_TOKEN=7ed4...53e
+    import.meta.env.MODE === "production"
+      ? import.meta.env.VITE_API_BASE_PROD
+      : import.meta.env.VITE_API_BASE;
+
+
+
+const ORDERS_URL = `${API_BASE}/api/assigned-orders/v1/delivery/orders`;
   const SERVICE_TOKEN = import.meta.env.VITE_DELIVERY_INGEST_TOKEN;
 
   useEffect(() => {
@@ -30,7 +34,7 @@ const AssignedOrdersPage = () => {
 
   const fetchOrders = async () => {
     try {
-      const res = await axios.get(API_BASE, {
+      const res = await axios.get(ORDERS_URL, {
         headers: { Authorization: `Bearer ${SERVICE_TOKEN}` },
       });
 
@@ -74,7 +78,7 @@ const AssignedOrdersPage = () => {
   const updateStatus = async (orderId, newStatus) => {
     try {
       await axios.patch(
-        `${API_BASE}/${encodeURIComponent(orderId)}/status`,
+        `${ORDERS_URL}/${encodeURIComponent(orderId)}/status`,
         { status: newStatus },
         {
           headers: {
